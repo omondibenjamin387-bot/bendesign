@@ -14,9 +14,6 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 
 <!-- ══════════════ FIREBASE SDK ══════════════ -->
-<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 
 <style>
 /* ══════════════════════════════════════════════════════════
@@ -575,10 +572,12 @@ body {
 ══════════════════════════════════════════════════════════ */
 #auth {
   background: var(--navy);
-  display: flex; align-items: center; justify-content: center;
+  /* NOTE: display is controlled by .view / .view.active rules — do NOT set display here */
+  align-items: center; justify-content: center;
   padding: 100px 24px 60px;
 }
-#auth.active { display: flex; }
+/* Override .view.active { display:block } to flex for centred layout */
+#auth.active { display: flex !important; }
 
 .auth-container { width: 100%; max-width: 540px; }
 
@@ -630,20 +629,12 @@ body {
   display: block; font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.14em;
   text-transform: uppercase; color: var(--gold); margin-bottom: 7px;
 }
-.form-input,
-.form-select {
-    width: 100%;
-    padding: 12px 15px;
-    background: rgba(255,255,255,0.04);
-    border: 1px solid rgba(255,255,255,0.09);
-    border-radius: 7px;
-    color: var(--cream);
-    font-family: var(--font-ui);
-    font-size: 14px;
-    outline: none;
-    transition: all 0.2s ease;
-    appearance: none;
-    -webkit-appearance: none;
+.form-input, .form-select {
+  width: 100%; padding: 12px 15px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.09); border-radius: 7px;
+  color: var(--cream); font-family: var(--font-ui); font-size: 14px;
+  outline: none; transition: all 0.2s; -webkit-appearance: none;
 }
 .form-input:focus, .form-select:focus {
   border-color: var(--gold);
@@ -905,35 +896,12 @@ body {
 }
 
 /* Field groups inside sidebar */
-.fg {
-    margin-bottom: 14px;
-}
-
-.fg label {
-    display: block;
-    font-family: var(--font-mono);
-    font-size: 9.5px;
-    letter-spacing: 0.13em;
-    text-transform: uppercase;
-    color: var(--gold);
-    margin-bottom: 5px;
-}
-
-.fg input,
-.fg textarea,
-.fg select {
-    width: 100%;
-    background: rgba(255,255,255,0.04);
-    border: 1px solid rgba(255,255,255,0.07);
-    border-radius: 5px;
-    color: var(--cream);
-    font-family: var(--font-ui);
-    font-size: 12.5px;
-    padding: 7px 10px;
-    outline: none;
-    transition: border-color 0.2s ease;
-    appearance: none;
-    -webkit-appearance: none;
+.fg { margin-bottom: 14px; }
+.fg label { display: block; font-family: var(--font-mono); font-size: 9.5px; letter-spacing: 0.13em; text-transform: uppercase; color: var(--gold); margin-bottom: 5px; }
+.fg input, .fg textarea, .fg select {
+  width: 100%; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.07);
+  border-radius: 5px; color: var(--cream); font-family: var(--font-ui); font-size: 12.5px;
+  padding: 7px 10px; outline: none; transition: border-color 0.2s; -webkit-appearance: none;
 }
 .fg input:focus, .fg textarea:focus, .fg select:focus { border-color: var(--gold); }
 .fg textarea { min-height: 70px; resize: vertical; line-height: 1.5; }
@@ -1714,100 +1682,85 @@ body {
   <span id="toast-text">Done.</span>
 </div>
 
-<!-- ══════════════════════════════════════════════════════════════
-     FIREBASE + APP JAVASCRIPT
-══════════════════════════════════════════════════════════════ -->
+<!-- ═══════════════════════════════════════════════════════════════
+     APPLICATION JAVASCRIPT  — localStorage mode (works instantly)
+     ───────────────────────────────────────────────────────────────
+     Firebase is OPTIONAL. To enable cloud sync when ready:
+       1. firebase.google.com → create project → web app
+       2. Uncomment the 3 Firebase <script> tags in <head>
+       3. Replace YOUR_* values in firebaseConfig block below
+═══════════════════════════════════════════════════════════════ -->
 <script>
-// ═══════════════════════════════════════════════
-// ╔═══════════════════════════════════════════╗
-// ║     FIREBASE CONFIGURATION                ║
-// ║                                           ║
-// ║  STEP 1: Go to https://console.firebase.google.com ║
-// ║  STEP 2: Create a project → Add Web App   ║
-// ║  STEP 3: Copy your firebaseConfig below   ║
-// ╚═══════════════════════════════════════════╝
-// ═══════════════════════════════════════════════
+'use strict';
 
-// Import the functions you need from the SDKs you need
-import { initializeApp } from "firebase/app";
-// TODO: Add SDKs for Firebase products that you want to use
-// https://firebase.google.com/docs/web/setup#available-libraries
+/* ── STATE: declared first so every function can safely reference them ── */
+var currentUser  = null;
+var userProfile  = null;
+var documents    = [];
+var currentType  = '';
+var currentTpl   = '';
+var FIREBASE_READY = false;
 
-// Your web app's Firebase configuration
+/* ── Optional Firebase — uncomment & fill in when ready ──────────────────
 const firebaseConfig = {
-  apiKey: "AIzaSyAmhz1tIKQVAc5QQISRyt03TUcf4Kc-o78",
-  authDomain: "bendesign-67bfd.firebaseapp.com",
-  projectId: "bendesign-67bfd",
-  storageBucket: "bendesign-67bfd.firebasestorage.app",
-  messagingSenderId: "168577606621",
-  appId: "1:168577606621:web:4e37bca29b254db4ae4c34"
+  apiKey:            "YOUR_API_KEY",
+  authDomain:        "YOUR_PROJECT.firebaseapp.com",
+  projectId:         "YOUR_PROJECT",
+  storageBucket:     "YOUR_PROJECT.appspot.com",
+  messagingSenderId: "YOUR_SENDER_ID",
+  appId:             "YOUR_APP_ID"
 };
+try {
+  firebase.initializeApp(firebaseConfig);
+  window._fbAuth = firebase.auth();
+  window._fbDb   = firebase.firestore();
+  FIREBASE_READY = true;
+} catch(e) { console.warn('Firebase unavailable:', e.message); }
+─────────────────────────────────────────────────────────────────────────*/
 
-// Initialize Firebase
-const app = initializeApp(firebaseConfig);
-
-// Initialise Firebase
-firebase.initializeApp(firebaseConfig);
-const auth = firebase.auth();
-const db   = firebase.firestore();
-
-// ═══════════════════════════════════════════════
-// STATE
-// ═══════════════════════════════════════════════
-let currentUser  = null;
-let userProfile  = null;
-let documents    = [];
-let currentType  = '';
-let currentTpl   = '';
-let FIREBASE_OK  = false;
-
-// ═══════════════════════════════════════════════
-// APP BOOT — Listen for Auth State
-// ═══════════════════════════════════════════════
-auth.onAuthStateChanged(async (user) => {
-  document.getElementById('app-loading').style.opacity = '0';
-  setTimeout(() => document.getElementById('app-loading').style.display = 'none', 500);
-
-  if (user) {
-    currentUser = user;
-    await loadUserProfile(user.uid);
-    await loadDocuments(user.uid);
-    initDashboard();
-    showView('dashboard');
-  } else {
-    showView('landing');
-  }
-});
-
-async function loadUserProfile(uid) {
-  try {
-    const doc = await db.collection('users').doc(uid).get();
-    if (doc.exists) userProfile = doc.data();
-  } catch (e) {
-    // Firebase not configured: fall back to localStorage
-    const raw = localStorage.getItem('bd_profile_' + uid);
-    if (raw) userProfile = JSON.parse(raw);
-  }
+/* ── BOOT: hides loading screen and shows correct view immediately ── */
+function _hideLoading() {
+  var el = document.getElementById('app-loading');
+  if (!el) return;
+  el.style.transition = 'opacity 0.4s';
+  el.style.opacity    = '0';
+  setTimeout(function(){ el.style.display = 'none'; }, 450);
 }
 
-async function loadDocuments(uid) {
-  documents = [];
+function _boot() {
+  _hideLoading();
   try {
-    const snap = await db.collection('users').doc(uid).collection('documents').orderBy('created','desc').get();
-    snap.forEach(d => documents.push({ id: d.id, ...d.data() }));
-  } catch (e) {
-    const raw = localStorage.getItem('bd_docs_' + uid);
-    if (raw) documents = JSON.parse(raw);
+    var raw = localStorage.getItem('bd_current_user');
+    if (raw) {
+      var p = JSON.parse(raw);
+      if (p && p.uid && p.name) {
+        currentUser = p;
+        userProfile = p;
+        documents   = JSON.parse(localStorage.getItem('bd_docs_' + p.uid) || '[]');
+        initDashboard();
+        showView('dashboard');
+        return;
+      }
+    }
+  } catch(e) {
+    localStorage.removeItem('bd_current_user');
   }
+  showView('landing');
 }
 
-// ═══════════════════════════════════════════════
-// VIEW NAVIGATION
-// ═══════════════════════════════════════════════
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', _boot);
+} else {
+  _boot();
+}
+
+
+/* ── VIEW NAVIGATION ──────────────────────────────────────────── */
 function showView(name) {
-  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
-  document.getElementById(name).classList.add('active');
-  window.scrollTo(0,0);
+  document.querySelectorAll('.view').forEach(function(v){ v.classList.remove('active'); });
+  var el = document.getElementById(name);
+  if (el) el.classList.add('active');
+  window.scrollTo(0, 0);
 }
 
 function gotoAuth(tab) {
@@ -1816,8 +1769,8 @@ function gotoAuth(tab) {
 }
 
 function switchTab(tab) {
-  document.querySelectorAll('.auth-tab').forEach(t => t.classList.remove('active'));
-  document.querySelectorAll('.auth-panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.auth-tab').forEach(function(t){ t.classList.remove('active'); });
+  document.querySelectorAll('.auth-panel').forEach(function(p){ p.classList.remove('active'); });
   document.getElementById('tab-' + tab).classList.add('active');
   document.getElementById('panel-' + tab).classList.add('active');
   document.getElementById('login-error').classList.remove('show');
@@ -1825,110 +1778,119 @@ function switchTab(tab) {
 }
 
 function scrollToSection(id) {
-  const el = document.getElementById(id);
+  var el = document.getElementById(id);
   if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
-// Nav scroll effect
-window.addEventListener('scroll', () => {
-  const nav = document.getElementById('l-nav');
+window.addEventListener('scroll', function() {
+  var nav = document.getElementById('l-nav');
   if (nav) nav.classList.toggle('scrolled', window.scrollY > 60);
 });
 
-// ═══════════════════════════════════════════════
-// AUTH — REGISTER
-// ═══════════════════════════════════════════════
-async function handleRegister() {
-  const name     = document.getElementById('reg-name').value.trim();
-  const phone    = document.getElementById('reg-phone').value.trim();
-  const email    = document.getElementById('reg-email').value.trim();
-  const company  = document.getElementById('reg-company').value.trim();
-  const username = document.getElementById('reg-username').value.trim();
-  const type     = document.getElementById('reg-type').value;
-  const roleEl   = document.querySelector('input[name="role"]:checked');
-  const pass     = document.getElementById('reg-password').value;
-  const confirm  = document.getElementById('reg-confirm').value;
+/* ── REGISTER ─────────────────────────────────────────────────── */
+function handleRegister() {
+  var name     = document.getElementById('reg-name').value.trim();
+  var phone    = document.getElementById('reg-phone').value.trim();
+  var email    = document.getElementById('reg-email').value.trim();
+  var company  = document.getElementById('reg-company').value.trim();
+  var username = document.getElementById('reg-username').value.trim();
+  var type     = document.getElementById('reg-type').value;
+  var roleEl   = document.querySelector('input[name="role"]:checked');
+  var pass     = document.getElementById('reg-password').value;
+  var confirm  = document.getElementById('reg-confirm').value;
 
-  const errEl = document.getElementById('reg-error');
-  const showErr = msg => { errEl.textContent = msg; errEl.classList.add('show'); };
+  var errEl = document.getElementById('reg-error');
+  function showErr(msg){ errEl.textContent = msg; errEl.classList.add('show'); }
+  errEl.classList.remove('show');
 
-  if (!name||!phone||!email||!company||!username||!type||!roleEl||!pass) return showErr('Please complete all fields before proceeding.');
+  if (!name)    return showErr('Please enter your full name.');
+  if (!phone)   return showErr('Please enter your phone number.');
+  if (!email || !email.includes('@')) return showErr('Please enter a valid email address.');
+  if (!company) return showErr('Please enter your organisation name.');
+  if (!username)return showErr('Please enter a company number or username.');
+  if (!type)    return showErr('Please select your organisation type.');
+  if (!roleEl)  return showErr('Please select your role within the organisation.');
+  if (!pass)    return showErr('Please create a password.');
   if (pass !== confirm) return showErr('Passwords do not match. Please verify and try again.');
-  if (pass.length < 6) return showErr('Password must be at least 6 characters in length.');
+  if (pass.length < 6)  return showErr('Password must be at least 6 characters.');
 
-  const btn = document.getElementById('register-btn');
-  btn.textContent = 'Creating Account...'; btn.disabled = true;
-
-  const profile = { name, phone, email, company, username, companyType: type, role: roleEl.value, createdAt: new Date().toISOString() };
-
-  try {
-    const cred = await auth.createUserWithEmailAndPassword(email, pass);
-    await db.collection('users').doc(cred.user.uid).set(profile);
-    toast('Account created successfully. Welcome to BenDesign! ✦');
-  } catch (e) {
-    // Firebase unavailable — localStorage fallback
-    const uid = 'local_' + btoa(email).replace(/=/g,'');
-    profile.uid = uid; profile.password = btoa(pass);
-    localStorage.setItem('bd_profile_' + uid, JSON.stringify(profile));
-    localStorage.setItem('bd_uid_' + email, uid);
-    userProfile = profile;
-    currentUser = { uid, email };
-    documents = [];
-    initDashboard();
-    showView('dashboard');
-    toast('Account created. Welcome to BenDesign! ✦');
-  } finally {
-    btn.textContent = '✦ Create Account'; btn.disabled = false;
+  /* Check duplicate email */
+  if (localStorage.getItem('bd_email_' + email)) {
+    return showErr('This email is already registered. Please sign in instead.');
   }
+
+  var uid = 'bd_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 7);
+  var profile = {
+    uid: uid, name: name, phone: phone, email: email,
+    company: company, username: username, companyType: type,
+    role: roleEl.value, createdAt: new Date().toISOString(),
+    password: btoa(encodeURIComponent(pass))
+  };
+
+  localStorage.setItem('bd_profile_' + uid, JSON.stringify(profile));
+  localStorage.setItem('bd_email_' + email, uid);
+  localStorage.setItem('bd_current_user', JSON.stringify(profile));
+
+  currentUser = profile;
+  userProfile = profile;
+  documents   = [];
+
+  initDashboard();
+  showView('dashboard');
+  toast('Account created successfully. Welcome to BenDesign! ✦');
 }
 
-// ═══════════════════════════════════════════════
-// AUTH — LOGIN
-// ═══════════════════════════════════════════════
-async function handleLogin() {
-  const email = document.getElementById('login-email').value.trim();
-  const pass  = document.getElementById('login-password').value;
-  const errEl = document.getElementById('login-error');
-  const showErr = msg => { errEl.textContent = msg; errEl.classList.add('show'); };
+/* ── LOGIN ────────────────────────────────────────────────────── */
+function handleLogin() {
+  var email = document.getElementById('login-email').value.trim();
+  var pass  = document.getElementById('login-password').value;
 
-  if (!email || !pass) return showErr('Please enter your email address and password.');
+  var errEl = document.getElementById('login-error');
+  function showErr(msg){ errEl.textContent = msg; errEl.classList.add('show'); }
+  errEl.classList.remove('show');
 
-  const btn = document.getElementById('login-btn');
-  btn.textContent = 'Signing In...'; btn.disabled = true;
+  if (!email) return showErr('Please enter your email address.');
+  if (!pass)  return showErr('Please enter your password.');
 
-  try {
-    await auth.signInWithEmailAndPassword(email, pass);
-    // onAuthStateChanged handles the rest
-  } catch (e) {
-    // localStorage fallback
-    const uid = localStorage.getItem('bd_uid_' + email);
-    if (!uid) { showErr('No account found with this email address. Please register first.'); btn.textContent='Sign In to Platform'; btn.disabled=false; return; }
-    const raw = localStorage.getItem('bd_profile_' + uid);
-    const prof = raw ? JSON.parse(raw) : null;
-    if (!prof || prof.password !== btoa(pass)) { showErr('Incorrect password. Please try again.'); btn.textContent='Sign In to Platform'; btn.disabled=false; return; }
-    userProfile = prof; currentUser = { uid, email };
-    const docsRaw = localStorage.getItem('bd_docs_' + uid);
-    documents = docsRaw ? JSON.parse(docsRaw) : [];
-    initDashboard(); showView('dashboard');
-    toast('Welcome back, ' + prof.name.split(' ')[0] + '. ✦');
-  } finally {
-    btn.textContent = 'Sign In to Platform'; btn.disabled = false;
+  var uid = localStorage.getItem('bd_email_' + email);
+  if (!uid) {
+    return showErr('No account found with this email address. Please register first.');
   }
+
+  var raw = localStorage.getItem('bd_profile_' + uid);
+  if (!raw) {
+    return showErr('Account data could not be found. Please register again.');
+  }
+
+  var profile;
+  try { profile = JSON.parse(raw); } catch(e) {
+    return showErr('Account data is corrupted. Please register again.');
+  }
+
+  if (profile.password !== btoa(encodeURIComponent(pass))) {
+    return showErr('Incorrect password. Please try again.');
+  }
+
+  currentUser = profile;
+  userProfile = profile;
+  documents   = JSON.parse(localStorage.getItem('bd_docs_' + uid) || '[]');
+  localStorage.setItem('bd_current_user', JSON.stringify(profile));
+
+  initDashboard();
+  showView('dashboard');
+  toast('Welcome back, ' + profile.name.split(' ')[0] + '. ✦');
 }
 
-// ═══════════════════════════════════════════════
-// AUTH — LOGOUT
-// ═══════════════════════════════════════════════
-async function handleLogout() {
-  try { await auth.signOut(); } catch(e) {}
-  currentUser = null; userProfile = null; documents = [];
+/* ── LOGOUT ───────────────────────────────────────────────────── */
+function handleLogout() {
+  localStorage.removeItem('bd_current_user');
+  currentUser = null;
+  userProfile = null;
+  documents   = [];
   showView('landing');
   toast('You have been signed out securely.');
 }
 
-// ═══════════════════════════════════════════════
-// DASHBOARD INIT
-// ═══════════════════════════════════════════════
 function initDashboard() {
   if (!userProfile) return;
   const initials = userProfile.name.split(' ').map(n=>n[0]).slice(0,2).join('').toUpperCase();
@@ -2072,21 +2034,29 @@ function closeEditor() {
 
 async function saveCurrentDoc() {
   if (!currentUser) return;
-  const title = document.getElementById('e-title').value || 'Untitled';
+  const title   = document.getElementById('e-title').value || 'Untitled';
   const content = document.getElementById('doc-page').innerHTML;
-  const docData = { title, type: currentType, template: currentTpl, content, created: Date.now(), updated: Date.now() };
-  const uid = currentUser.uid;
+  const uid     = currentUser.uid;
+  const docData = {
+    id: 'doc_' + Date.now(),
+    title, type: currentType, template: currentTpl,
+    content, created: Date.now(), updated: Date.now()
+  };
 
-  try {
-    const ref = await db.collection('users').doc(uid).collection('documents').add(docData);
-    documents.unshift({ id: ref.id, ...docData });
-  } catch(e) {
-    docData.id = 'doc_' + Date.now();
-    documents.unshift(docData);
-    localStorage.setItem('bd_docs_' + uid, JSON.stringify(documents));
+  // Try Firestore
+  if (FIREBASE_READY && window._fbDb) {
+    try {
+      const ref = await window._fbDb.collection('users').doc(uid).collection('documents').add(docData);
+      docData.id = ref.id;
+    } catch(e) { /* fall through to localStorage */ }
   }
+
+  // Always keep localStorage in sync (works offline too)
+  documents.unshift(docData);
+  localStorage.setItem('bd_docs_' + uid, JSON.stringify(documents));
+
   renderDocLists();
-  toast('Document saved. ✦');
+  toast('Document saved successfully. ✦');
 }
 
 function editDoc(id) {
@@ -2603,6 +2573,3 @@ function updateHeroStamp() {
 setInterval(updateHeroStamp, 1000);
 updateHeroStamp();
 </script>
-
-</body>
-</html>
